@@ -10,27 +10,27 @@ namespace XML.lib
     {
         public IEnumerable<Stream> Convert(Stream bigXmlStream)
         {
-            if (bigXmlStream == null) 
+            if (bigXmlStream == null)
                 throw new ArgumentNullException(nameof(bigXmlStream));
 
             var doc = XDocument.Load(bigXmlStream);
-            var objectsContainer = doc.Root.Element("Objects")
+            var objectsContainer = doc.Root
+                .Element("Objects")
                 ?? throw new InvalidOperationException("Нет тега <Objects>");
 
             // собираем все элементы
-            var objectElems   = objectsContainer.Elements("Object").ToList();
+            var objectElems = objectsContainer.Elements("Object").ToList();
             var propertyElems = objectsContainer.Elements("Property").ToList();
-            var linkElems     = objectsContainer.Elements("Link").ToList();
+            var linkElems = objectsContainer.Elements("Link").ToList();
 
             var result = new List<Stream>();
             var fileInfos = new List<(string Filename, string ObjectId)>();
 
-            int idx = 1;
+            var idx = 1;
             foreach (var obj in objectElems)
             {
                 // id объекта
-                var objectId = (string)obj.Attribute("id") 
-                               ?? idx.ToString();
+                var objectId = (string)obj.Attribute("id") ?? idx.ToString();
 
                 // свойства, принадлежащие этому объекту
                 var myProps = propertyElems
@@ -41,18 +41,15 @@ namespace XML.lib
                 var myLinks = linkElems
                     .Where(l =>
                         (string)l.Attribute("fromId") == objectId
-                     || (string)l.Attribute("toId")   == objectId
-                    ).ToList();
+                        || (string)l.Attribute("toId") == objectId)
+                    .ToList();
 
                 // строим отдельный файл
                 var subDoc = new XDocument(
                     new XDeclaration("1.0", "utf-8", "yes"),
                     new XElement("Object",
-                        // атрибуты исходного <Object>
                         obj.Attributes(),
-                        // подставляем его свойства
                         myProps.Select(p => new XElement("Property", p.Attributes())),
-                        // подставляем связи
                         myLinks.Select(l => new XElement("Link", l.Attributes()))
                     )
                 );
@@ -67,8 +64,9 @@ namespace XML.lib
             }
 
             // собираем summary
-            int totalObjects    = objectElems.Count;
-            int totalProperties = propertyElems.Count;
+            var totalObjects = objectElems.Count;
+            var totalProperties = propertyElems.Count;
+
             // все ссылки оставляем в одном LinkXML
             var linkXml = new XDocument(
                 new XDeclaration("1.0", "utf-8", "yes"),
@@ -76,7 +74,7 @@ namespace XML.lib
                     new XAttribute("format", "LinkXML"),
                     new XAttribute("version", "1.0"),
                     new XElement("Summary",
-                        new XAttribute("objectsCount",    totalObjects),
+                        new XAttribute("objectsCount", totalObjects),
                         new XAttribute("propertiesCount", totalProperties)
                     ),
                     new XElement("Files",
@@ -90,8 +88,8 @@ namespace XML.lib
                     new XElement("Relationships",
                         linkElems.Select(l =>
                             new XElement("Link",
-                                new XAttribute("fromId",   (string)l.Attribute("fromId")),
-                                new XAttribute("toId",     (string)l.Attribute("toId")),
+                                new XAttribute("fromId", (string)l.Attribute("fromId")),
+                                new XAttribute("toId", (string)l.Attribute("toId")),
                                 new XAttribute("relation", (string)l.Attribute("relation"))
                             )
                         )
