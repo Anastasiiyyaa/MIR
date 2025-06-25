@@ -1,9 +1,12 @@
 using System;
 using System.IO;
 using System.Linq;
+
 using Ionic.Zip;              // из DotNetZip
-using Xunit;
+
 using XML.lib;
+
+using Xunit;
 
 namespace XML.Tests
 {
@@ -13,7 +16,7 @@ namespace XML.Tests
         private const string XmlFileName = "BIG.xml";
         private const string ZipPassword = "mir123"; // укажите здесь пароль
 
-        private readonly IXmlConverter  _converter  = new XmlConverter();
+        private readonly IXmlConverter _converter = new XmlConverter();
         private readonly IXmlCalculator _calculator = new XmlCalculator();
 
         public XmlConverterTests()
@@ -24,10 +27,10 @@ namespace XML.Tests
         [Fact]
         public void Convert_And_Calculate_MatchBigXmlSummary()
         {
-            var baseDir     = AppContext.BaseDirectory;
+            var baseDir = AppContext.BaseDirectory;
             var bigFilePath = Path.Combine(baseDir, XmlFileName);
 
-            Assert.True(File.Exists(bigFilePath), 
+            Assert.True(File.Exists(bigFilePath),
                 $"Не найден {XmlFileName} в {baseDir}");
 
             using var bigStream = File.OpenRead(bigFilePath);
@@ -45,7 +48,7 @@ namespace XML.Tests
             var (linkObjects, linkProps) = _calculator.Calculate(linkStream);
 
             Assert.Equal(origObjects, linkObjects);
-            Assert.Equal(origProps,   linkProps);
+            Assert.Equal(origProps, linkProps);
         }
 
         /// <summary>
@@ -69,7 +72,7 @@ namespace XML.Tests
 
                 // Находим в архиве именно тот entry, который нам нужен
                 var entry = zip.Entries
-                    .FirstOrDefault(e => 
+                    .FirstOrDefault(e =>
                         string.Equals(e.FileName, XmlFileName, StringComparison.OrdinalIgnoreCase));
 
                 if (entry == null)
