@@ -21,6 +21,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Include="BIG.zip">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
 

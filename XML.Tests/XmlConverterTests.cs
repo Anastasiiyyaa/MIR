@@ -12,7 +12,7 @@ namespace XML.Tests
 {
     public class XmlConverterTests
     {
-        private const string ZipFileName = "D:/нпо мир/MIR-2/XML.Tests/BIG.zip";
+        private const string ZipFileName = "BIG.zip";
         private const string XmlFileName = "BIG.xml";
         private const string ZipPassword = "mir123"; // укажите здесь пароль
 
@@ -50,6 +50,8 @@ namespace XML.Tests
             Assert.Equal(origObjects, linkObjects);
             Assert.Equal(origProps, linkProps);
         }
+
+
 
         /// <summary>
         /// Гарантирует, что big.xml распакован в выходной директории тестов.
