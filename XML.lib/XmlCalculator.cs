@@ -9,33 +9,28 @@ namespace XML.lib
     {
         public (int objectsCount, int propertiesCount) Calculate(Stream xmlStream)
         {
-            if (xmlStream == null)
+            if (xmlStream == null) 
                 throw new ArgumentNullException(nameof(xmlStream));
 
-            XDocument doc = XDocument.Load(xmlStream);
+            var doc = XDocument.Load(xmlStream);
+            var root = doc.Root;
 
-            // Если это LinkXML, берем данные из Summary
-            if (doc.Root.Name.LocalName == "LinkXML" &&
-                doc.Root.Attribute("format")?.Value == "LinkXML")
+            // если LinkXML — читаем Summary
+            if (root.Name == "LinkXML" 
+             && (string)root.Attribute("format") == "LinkXML")
             {
-                XElement summary = doc.Root.Element("Summary");
-                if (summary != null)
-                {
-                    int objCount = (int)summary.Attribute("objectsCount");
-                    int propCount = (int)summary.Attribute("propertiesCount");
-                    return (objCount, propCount);
-                }
-                return (0, 0);
+                var summary = root.Element("Summary");
+                int o = (int)summary.Attribute("objectsCount");
+                int p = (int)summary.Attribute("propertiesCount");
+                return (o, p);
             }
-            else
-            {
-                // Если BigXML – ищем контейнер объектов
-                XElement objectsElement = doc.Root.Element("Objects") ?? doc.Root;
-                var objects = objectsElement.Elements("Object").ToList();
-                int objCount = objects.Count;
-                int propCount = objects.Sum(o => o.Descendants("Property").Count());
-                return (objCount, propCount);
-            }
+
+            // иначе предполагаем BigXML: внутри <Root> есть один <Objects>
+            var objsContainer = root.Element("Objects") 
+                                ?? throw new InvalidOperationException("Нет <Objects>");
+            int objCount  = objsContainer.Elements("Object").Count();
+            int propCount = objsContainer.Elements("Property").Count();
+            return (objCount, propCount);
         }
     }
 }

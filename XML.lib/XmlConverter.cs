@@ -10,88 +10,101 @@ namespace XML.lib
     {
         public IEnumerable<Stream> Convert(Stream bigXmlStream)
         {
-            if (bigXmlStream == null)
+            if (bigXmlStream == null) 
                 throw new ArgumentNullException(nameof(bigXmlStream));
 
-            // Загружаем документ из входного потока
-            XDocument bigDoc = XDocument.Load(bigXmlStream);
+            var doc = XDocument.Load(bigXmlStream);
+            var objectsContainer = doc.Root.Element("Objects")
+                ?? throw new InvalidOperationException("Нет тега <Objects>");
 
-            // Извлекаем контейнер объектов
-            XElement objectsElement = bigDoc.Root.Element("Objects");
-            if (objectsElement == null)
-                throw new InvalidOperationException("BigXML не содержит элемента 'Objects'.");
+            // собираем все элементы
+            var objectElems   = objectsContainer.Elements("Object").ToList();
+            var propertyElems = objectsContainer.Elements("Property").ToList();
+            var linkElems     = objectsContainer.Elements("Link").ToList();
 
-            // Получаем список объектов
-            List<XElement> objects = objectsElement.Elements("Object").ToList();
+            var result = new List<Stream>();
+            var fileInfos = new List<(string Filename, string ObjectId)>();
 
-            // Извлекаем связи (если заданы)
-            XElement linksElement = bigDoc.Root.Element("Links");
-            List<XElement> links = linksElement != null ? linksElement.Elements("Link").ToList() : null;
-
-            List<Stream> resultStreams = new List<Stream>();
-            List<(string filename, string objectId)> fileInfos = new List<(string filename, string objectId)>();
-
-            int fileCounter = 1;
-            foreach (var obj in objects)
+            int idx = 1;
+            foreach (var obj in objectElems)
             {
-                // Используем атрибут id или порядковый номер
-                string objectId = (string)obj.Attribute("id") ?? fileCounter.ToString();
+                // id объекта
+                var objectId = (string)obj.Attribute("id") 
+                               ?? idx.ToString();
 
-                // Создаём документ для отдельного объекта
-                XDocument objDoc = new XDocument(
+                // свойства, принадлежащие этому объекту
+                var myProps = propertyElems
+                    .Where(p => (string)p.Attribute("ownerId") == objectId)
+                    .ToList();
+
+                // связи, где участвует этот объект
+                var myLinks = linkElems
+                    .Where(l =>
+                        (string)l.Attribute("fromId") == objectId
+                     || (string)l.Attribute("toId")   == objectId
+                    ).ToList();
+
+                // строим отдельный файл
+                var subDoc = new XDocument(
                     new XDeclaration("1.0", "utf-8", "yes"),
-                    new XElement("Object", obj.Elements())
+                    new XElement("Object",
+                        // атрибуты исходного <Object>
+                        obj.Attributes(),
+                        // подставляем его свойства
+                        myProps.Select(p => new XElement("Property", p.Attributes())),
+                        // подставляем связи
+                        myLinks.Select(l => new XElement("Link", l.Attributes()))
+                    )
                 );
 
-                MemoryStream objStream = new MemoryStream();
-                objDoc.Save(objStream);
-                objStream.Position = 0;
-                resultStreams.Add(objStream);
+                var ms = new MemoryStream();
+                subDoc.Save(ms);
+                ms.Position = 0;
+                result.Add(ms);
 
-                fileInfos.Add((filename: $"File{fileCounter}.xml", objectId: objectId));
-                fileCounter++;
+                fileInfos.Add(($"Object_{objectId}.xml", objectId));
+                idx++;
             }
 
-            // Вычисляем агрегированные данные
-            int totalObjects = objects.Count;
-            int totalProperties = objects.Sum(o => o.Descendants("Property").Count());
-
-            // Строим файл-ссылку LinkXML
-            XDocument linkDoc = new XDocument(
+            // собираем summary
+            int totalObjects    = objectElems.Count;
+            int totalProperties = propertyElems.Count;
+            // все ссылки оставляем в одном LinkXML
+            var linkXml = new XDocument(
                 new XDeclaration("1.0", "utf-8", "yes"),
                 new XElement("LinkXML",
                     new XAttribute("format", "LinkXML"),
                     new XAttribute("version", "1.0"),
                     new XElement("Summary",
-                        new XAttribute("objectsCount", totalObjects),
+                        new XAttribute("objectsCount",    totalObjects),
                         new XAttribute("propertiesCount", totalProperties)
                     ),
                     new XElement("Files",
                         fileInfos.Select(fi =>
                             new XElement("File",
-                                new XAttribute("filename", fi.filename),
-                                new XAttribute("objectId", fi.objectId)
+                                new XAttribute("filename", fi.Filename),
+                                new XAttribute("objectId", fi.ObjectId)
                             )
                         )
                     ),
-                    links != null ?
-                        new XElement("Relationships",
-                            links.Select(l =>
-                                new XElement("Link",
-                                    new XAttribute("from", (string)l.Attribute("from")),
-                                    new XAttribute("to", (string)l.Attribute("to"))
-                                )
+                    new XElement("Relationships",
+                        linkElems.Select(l =>
+                            new XElement("Link",
+                                new XAttribute("fromId",   (string)l.Attribute("fromId")),
+                                new XAttribute("toId",     (string)l.Attribute("toId")),
+                                new XAttribute("relation", (string)l.Attribute("relation"))
                             )
-                        ) : null
+                        )
+                    )
                 )
             );
 
-            MemoryStream linkStream = new MemoryStream();
-            linkDoc.Save(linkStream);
+            var linkStream = new MemoryStream();
+            linkXml.Save(linkStream);
             linkStream.Position = 0;
-            resultStreams.Add(linkStream);
+            result.Add(linkStream);
 
-            return resultStreams;
+            return result;
         }
     }
 }
