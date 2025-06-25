@@ -27,8 +27,9 @@ namespace XML.lib
 
             // Иначе предполагаем BigXML: внутри корня есть <Objects>
             var objsContainer = root.Element("Objects")
-                                ?? throw new InvalidOperationException("Нет <Objects>");
-            int objCount  = objsContainer.Elements("Object").Count();
+                ?? throw new InvalidOperationException("Нет <Objects>");
+
+            int objCount = objsContainer.Elements("Object").Count();
             int propCount = objsContainer.Elements("Property").Count();
             return (objCount, propCount);
         }
