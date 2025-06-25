@@ -72,7 +72,6 @@ namespace XML.Tests
             {
                 zip.Password = ZipPassword;
 
-                // Находим в архиве именно тот entry, который нам нужен
                 var entry = zip.Entries
                     .FirstOrDefault(e =>
                         string.Equals(e.FileName, XmlFileName, StringComparison.OrdinalIgnoreCase));
@@ -80,7 +79,6 @@ namespace XML.Tests
                 if (entry == null)
                     throw new InvalidDataException($"В архиве нет файла {XmlFileName}");
 
-                // Распаковываем в папку тестов
                 entry.Extract(baseDir, ExtractExistingFileAction.OverwriteSilently);
             }
         }
