@@ -9,15 +9,15 @@ namespace XML.lib
     {
         public (int objectsCount, int propertiesCount) Calculate(Stream xmlStream)
         {
-            if (xmlStream == null) 
+            if (xmlStream == null)
                 throw new ArgumentNullException(nameof(xmlStream));
 
             var doc = XDocument.Load(xmlStream);
             var root = doc.Root;
 
-            // если LinkXML — читаем Summary
-            if (root.Name == "LinkXML" 
-             && (string)root.Attribute("format") == "LinkXML")
+            // Если это LinkXML — читаем Summary
+            if (root.Name == "LinkXML" &&
+                (string)root.Attribute("format") == "LinkXML")
             {
                 var summary = root.Element("Summary");
                 int o = (int)summary.Attribute("objectsCount");
@@ -25,8 +25,8 @@ namespace XML.lib
                 return (o, p);
             }
 
-            // иначе предполагаем BigXML: внутри <Root> есть один <Objects>
-            var objsContainer = root.Element("Objects") 
+            // Иначе предполагаем BigXML: внутри корня есть <Objects>
+            var objsContainer = root.Element("Objects")
                                 ?? throw new InvalidOperationException("Нет <Objects>");
             int objCount  = objsContainer.Elements("Object").Count();
             int propCount = objsContainer.Elements("Property").Count();
