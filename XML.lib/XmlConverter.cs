@@ -1,108 +1,174 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using System.Xml.Linq;
 
-namespace XML.lib
+namespace xml.Lib
 {
     public class XmlConverter : IXmlConverter
     {
         public IEnumerable<Stream> Convert(Stream bigXmlStream)
         {
             if (bigXmlStream == null)
-                throw new ArgumentNullException(nameof(bigXmlStream));
+                throw new ArgumentNullException(nameof(bigXmlStream), XmlConstants.ErrNullStream);
 
             var doc = XDocument.Load(bigXmlStream);
-            var objectsContainer = doc.Root
-                .Element("Objects")
-                ?? throw new InvalidOperationException("Нет тега <Objects>");
+            if (GetXmlFileType(doc) != XmlFileType.BigXml)
+                throw new InvalidOperationException(
+                    string.Format(XmlConstants.ErrUnsupportedFormat, GetXmlFileType(doc)));
 
-            // собираем все элементы
-            var objectElems = objectsContainer.Elements("Object").ToList();
-            var propertyElems = objectsContainer.Elements("Property").ToList();
-            var linkElems = objectsContainer.Elements("Link").ToList();
+            var root = doc.Root
+                       ?? throw new InvalidOperationException(XmlConstants.ErrEmptyDocument);
+
+            var objectElems = GetObjectElements(root);
+            var propertyElems = GetPropertyElements(root);
+            var linkElems = GetLinkElements(root);
 
             var result = new List<Stream>();
-            var fileInfos = new List<(string Filename, string ObjectId)>();
 
-            var idx = 1;
             foreach (var obj in objectElems)
             {
-                // id объекта
-                var objectId = (string)obj.Attribute("id") ?? idx.ToString();
-
-                // свойства, принадлежащие этому объекту
-                var myProps = propertyElems
-                    .Where(p => (string)p.Attribute("ownerId") == objectId)
-                    .ToList();
-
-                // связи, где участвует этот объект
-                var myLinks = linkElems
-                    .Where(l =>
-                        (string)l.Attribute("fromId") == objectId
-                        || (string)l.Attribute("toId") == objectId)
-                    .ToList();
-
-                // строим отдельный файл
-                var subDoc = new XDocument(
-                    new XDeclaration("1.0", "utf-8", "yes"),
-                    new XElement("Object",
-                        obj.Attributes(),
-                        myProps.Select(p => new XElement("Property", p.Attributes())),
-                        myLinks.Select(l => new XElement("Link", l.Attributes()))
-                    )
-                );
-
-                var ms = new MemoryStream();
-                subDoc.Save(ms);
-                ms.Position = 0;
-                result.Add(ms);
-
-                fileInfos.Add(($"Object_{objectId}.xml", objectId));
-                idx++;
+                result.Add(BuildObjectFile(obj, propertyElems, linkElems));
             }
 
-            // собираем summary
-            var totalObjects = objectElems.Count;
-            var totalProperties = propertyElems.Count;
+            result.Add(BuildLinkIndexFile(objectElems, propertyElems.Count, linkElems));
 
-            // все ссылки оставляем в одном LinkXML
-            var linkXml = new XDocument(
+            return result;
+        }
+
+        private IEnumerable<XElement> GetObjectElements(XElement root) =>
+            root.Element(XmlConstants.Objects)?
+                .Elements(XmlConstants.Object)
+                .ToList()
+            ?? throw new InvalidOperationException(XmlConstants.ErrMissingObjects);
+
+        private List<XElement> GetPropertyElements(XElement root) =>
+            root.Element(XmlConstants.Objects)?
+                .Elements(XmlConstants.Property)
+                .ToList()
+            ?? new List<XElement>();
+
+        private List<XElement> GetLinkElements(XElement root) =>
+            root.Element(XmlConstants.Objects)?
+                .Elements(XmlConstants.Link)
+                .ToList()
+            ?? new List<XElement>();
+
+        private Stream BuildObjectFile(
+            XElement objElem,
+            IEnumerable<XElement> allProps,
+            IEnumerable<XElement> allLinks)
+        {
+            var id = objElem.Attribute(XmlConstants.ObjectId)?.Value
+                     ?? throw new InvalidOperationException(
+                            $"У объекта нет атрибута {XmlConstants.ObjectId}");
+
+            var myProps = allProps
+                .Where(p => p.Attribute(XmlConstants.OwnerId)?.Value == id);
+
+            var myLinks = allLinks
+                .Where(l =>
+                    l.Attribute(XmlConstants.FromId)?.Value == id ||
+                    l.Attribute(XmlConstants.ToId)?.Value == id);
+
+            var subDoc = new XDocument(
                 new XDeclaration("1.0", "utf-8", "yes"),
-                new XElement("LinkXML",
-                    new XAttribute("format", "LinkXML"),
-                    new XAttribute("version", "1.0"),
-                    new XElement("Summary",
-                        new XAttribute("objectsCount", totalObjects),
-                        new XAttribute("propertiesCount", totalProperties)
+                new XElement(XmlConstants.Object,
+                    objElem.Attributes(),
+                    myProps.Select(p => new XElement(XmlConstants.Property, p.Attributes())),
+                    myLinks.Select(l => new XElement(XmlConstants.Link, l.Attributes()))
+                )
+            );
+
+            var ms = new MemoryStream();
+            subDoc.Save(ms);
+            ms.Position = 0;
+            return ms;
+        }
+
+        private Stream BuildLinkIndexFile(
+            IEnumerable<XElement> objectElems,
+            int totalProperties,
+            IEnumerable<XElement> linkElems)
+        {
+            var files = objectElems
+                .Select((o, i) =>
+                {
+                    var id = o.Attribute(XmlConstants.ObjectId)?.Value ?? (i + 1).ToString();
+                    var filename = $"{XmlConstants.Object}_{id}.xml";
+                    return new { filename, id };
+                });
+
+            var linkIndex = new XDocument(
+                new XDeclaration("1.0", "utf-8", "yes"),
+                new XElement(XmlConstants.LinkXml,
+                    new XAttribute(XmlConstants.Format, XmlConstants.FormatValueLinkXml),
+                    new XAttribute(XmlConstants.Version, XmlConstants.LinkXmlVersionValue),
+
+                    new XElement(XmlConstants.Summary,
+                        new XAttribute(XmlConstants.ObjectsCount, objectElems.Count()),
+                        new XAttribute(XmlConstants.PropertiesCount, totalProperties)
                     ),
-                    new XElement("Files",
-                        fileInfos.Select(fi =>
-                            new XElement("File",
-                                new XAttribute("filename", fi.Filename),
-                                new XAttribute("objectId", fi.ObjectId)
+
+                    new XElement(XmlConstants.Files,
+                        files.Select(f =>
+                            new XElement(XmlConstants.File,
+                                new XAttribute(XmlConstants.Filename, f.filename),
+                                new XAttribute(XmlConstants.ObjectId, f.id)
                             )
                         )
                     ),
-                    new XElement("Relationships",
+
+                    new XElement(XmlConstants.Relationships,
                         linkElems.Select(l =>
-                            new XElement("Link",
-                                new XAttribute("fromId", (string)l.Attribute("fromId")),
-                                new XAttribute("toId", (string)l.Attribute("toId")),
-                                new XAttribute("relation", (string)l.Attribute("relation"))
+                            new XElement(XmlConstants.Link,
+                                new XAttribute(XmlConstants.FromId, (string?)l.Attribute(XmlConstants.FromId) ?? ""),
+                                new XAttribute(XmlConstants.ToId, (string?)l.Attribute(XmlConstants.ToId) ?? ""),
+                                new XAttribute(XmlConstants.Relation, (string?)l.Attribute(XmlConstants.Relation) ?? "")
                             )
                         )
                     )
                 )
             );
 
-            var linkStream = new MemoryStream();
-            linkXml.Save(linkStream);
-            linkStream.Position = 0;
-            result.Add(linkStream);
+            var ms = new MemoryStream();
+            linkIndex.Save(ms);
+            ms.Position = 0;
+            return ms;
+        }
 
-            return result;
+        public XmlFileType DetectFileType(Stream xmlStream)
+        {
+            if (xmlStream == null)
+                throw new ArgumentNullException(nameof(xmlStream), XmlConstants.ErrNullStream);
+
+            long originalPosition = 0;
+            if (xmlStream.CanSeek)
+                originalPosition = xmlStream.Position;
+
+            XDocument doc = XDocument.Load(xmlStream);
+
+            if (xmlStream.CanSeek)
+                xmlStream.Position = originalPosition;
+
+            return GetXmlFileType(doc);
+        }
+
+        private XmlFileType GetXmlFileType(XDocument doc)
+        {
+            var root = doc.Root;
+            if (root == null)
+                return XmlFileType.Unknown;
+
+            if (root.Name.LocalName == XmlConstants.LinkXml &&
+                root.Attribute(XmlConstants.Format)?.Value == XmlConstants.FormatValueLinkXml)
+                return XmlFileType.LinkXml;
+
+            if (root.Name.LocalName == XmlConstants.LinkIndex &&
+                root.Attribute(XmlConstants.Format)?.Value == XmlConstants.FormatValueLinkIndex)
+                return XmlFileType.LinkIndex;
+
+            if (root.Element(XmlConstants.Objects) != null)
+                return XmlFileType.BigXml;
+
+            return XmlFileType.Unknown;
         }
     }
 }
